@@ -24,7 +24,7 @@ from cryptography.fernet import Fernet
 
 # Paths and settings
 BASE_DIR = Path(__file__).parent
-DETECTOR = BASE_DIR / 'main.py'
+DETECTOR = BASE_DIR / 'randsomware_detector.py'
 TEST_DIR = Path(r"C:\Users\doric\Desktop\Dor\Studies\Ariel\Second Year\Semester B\Cyber\Lab\folder4hash")
 LOG_FILE = TEST_DIR / 'ransomware_detector.log'
 NUM_FILES = 3

@@ -1,43 +1,62 @@
 #!/usr/bin/env python3
 """
-Ransomware detection tool using entropy, whitespace, printable detection, distinctiveness, and fingerprint sampling.
+Project: Ransomware Detection Tool
 
-Monitors existing and new files, detecting possible encryption by:
-- Absolute entropy threshold crossing.
-- Relative entropy increase (delta) from baseline.
-- Significant drop in whitespace ratio *and* low printable ratio (indicates non-text content).
-- Significant high distinctiveness in printable content (e.g., Base64-like random printable).
-- Significant full-file rewrite (fingerprint sample changes).
-- Resets baseline on entropy decrease (possible decryption) or minor content changes.
+Description:
+This tool continuously monitors a specified directory for potential ransomware encryption by analyzing file content changes. It uses a hybrid approach combining entropy analysis, whitespace and printable character ratio, distinctiveness metrics, and fingerprint sampling to accurately detect suspicious modifications while minimizing false positives.
 
-Approach:
-- On startup: scan directory recursively, compute baseline for each file:
-    * metrics: (entropy, ws_ratio, printable_ratio, distinct_count)
-    * fingerprint: samples of bytes at start, middle, end (SAMPLE_SIZE each)
-- Monitor directory using watchdog:
-    - On new file: compute baseline only.
-    - On modification: recompute metrics and fingerprint:
-        1. If entropy < prev_entropy: reset baseline (no alert).
-        2. Compute fingerprint segment changes; if changes < FP_CHANGE_THRESHOLD: minor change, update baseline quietly.
-        3. Compute dynamic thresholds based on file size (capped at CHUNK_SIZE):
-              scale = min(size, CHUNK_SIZE) / CHUNK_SIZE
-              dyn_abs = ABSOLUTE_THRESHOLD * scale
-              dyn_delta = DELTA_THRESHOLD * scale
-        4. Detection conditions:
-              cond_entropy = entropy >= dyn_abs and (entropy - prev_entropy) >= dyn_delta
-              cond_ws = ws_ratio <= WHITESPACE_THRESHOLD and printable_ratio <= PRINTABLE_THRESHOLD
-              cond_distinct = printable_ratio >= PRINTABLE_THRESHOLD and distinct_count >= DISTINCT_COUNT_THRESHOLD
-           If cond_entropy and (cond_ws or cond_distinct): alert and update baseline.
-        5. Else: update baseline quietly.
-- Skip internal key file (key.key).
+Features:
+- Detects sudden increases in Shannon entropy.
+- Monitors drops in whitespace ratio combined with low printable character ratio (indicates binary/encoded content).
+- Identifies high distinctiveness in printable-only segments (e.g., Base64 output).
+- Samples file fingerprints (start, middle, end) to distinguish minor edits from full rewrites.
+- Dynamically adjusts detection thresholds based on file size.
+- Resets baselines on entropy decreases (e.g., decryption) or small non-suspicious edits.
 
-References:
-- Shannon entropy: https://en.wikipedia.org/wiki/Entropy_(information_theory)
+Prerequisites:
+- Python 3.8 or later
+- watchdog
+- cryptography
 
-Resource analysis:
-- Time complexity: O(n) per event for metrics + O(k) for fingerprint sampling.
-- Memory usage: O(CHUNK_SIZE)+O(SAMPLE_SIZE*3).
-- I/O: event-driven, plus initial scan.
+Installation:
+```bash
+pip install watchdog cryptography
+```
+
+Usage (Windows & Linux):
+```bash
+# Monitor a directory, writing log output to ransomware.log
+python ransomware_detector.py "<path_to_folder>" --log-file /path/to/ransomware.log
+
+# Optional parameters (defaults shown):
+--min-size 16            # Minimum file size in bytes to analyze
+--delta 1.0              # Minimum entropy increase in bits
+--threshold 6.0          # Absolute entropy threshold in bits
+--ws-thresh 0.05         # Max allowed whitespace fraction
+--printable-thresh 0.8   # Min printable fraction to treat content as text
+--distinct-thresh 50     # Distinct byte count threshold for randomness
+```
+
+On Windows:
+```powershell
+python ransomware_detector.py "C:\path\to\monitor" --log-file C:\logs\ransomware.log
+```
+
+On Linux/macOS:
+```bash
+python3 ransomware_detector.py "/path/to/monitor" --log-file /var/log/ransomware.log
+```
+
+Resource Analysis (based on implementation):
+1. **Time Complexity**: O(n) per file modification event for metric computation (n = file size in bytes, reading in chunks) + O(k) for fingerprint sampling (k = SAMPLE_SIZE * number_of_segments).
+2. **Memory Usage**: O(CHUNK_SIZE) for buffered file reads + O(SAMPLE_SIZE * 3) for fingerprint segments; baseline stores constant-size tuples per monitored file (entropy, ratios, fingerprint references).
+3. **I/O Complexity**: Event-driven via watchdog (low I/O during idle); initial full scan reads entire directory once (O(total_bytes)); subsequent reads occur only on file changes.
+
+Note:
+- Ensure the process has read permissions for files in the monitored directory.
+- Running as a background/daemon process is recommended for continuous protection.
+
+Original logic follows below.
 """
 import os
 import math
